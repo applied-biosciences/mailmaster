@@ -1,3 +1,4 @@
-# Filled in by scripts/write_build_info.py during the GitHub build (from the MS_CLIENT_ID repository variable).
-# The Microsoft app (client) ID is not a secret; it identifies MailMaster to Microsoft sign-in.
-CLIENT_ID = ""
+# Microsoft app (client) ID for MailMaster's Outlook / Microsoft 365 sign-in.
+# This is not a secret: it identifies the app to Microsoft (no client secret is used).
+# A build can override it with the MS_CLIENT_ID repository variable.
+CLIENT_ID = "c1adb826-c600-4233-a4e0-a0c983d2970f"

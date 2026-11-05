@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.png" alt="MailMaster logo" width="96">
+</p>
+
 # Changelog
 
 All notable changes to MailMaster are listed here. Versions follow [Semantic Versioning](https://semver.org/).
@@ -10,10 +14,12 @@ All notable changes to MailMaster are listed here. Versions follow [Semantic Ver
 - Web links (unsubscribe pages, "Open" in Gmail, help links) open in the normal browser.
 - Automatic builds and GitHub Releases, with a start-up check of every build.
 - Automated tests for sorting, unsubscribing, IMAP handling and the main actions.
+- New MailMaster logo, used for the app icon, favicon, window header and docs.
 
 ### Changed
 - Microsoft sign-in no longer uses a client secret (desktop/public client). This fixes the `AADSTS7000215 invalid client secret` sign-in error.
 - Confirmation prompts are now MailMaster's own dialogs instead of browser pop-ups.
+- Interface accent colours now match the logo (cyan, blue and violet).
 
 ## [1.1.0] - 2026-11-05
 ### Added

@@ -1,4 +1,15 @@
-# MailMaster
+<p align="center">
+  <img src="assets/logo.png" alt="MailMaster logo" width="160">
+</p>
+
+<h1 align="center">MailMaster</h1>
+
+<p align="center">
+  <a href="../../releases/latest"><b>Download</b></a> ·
+  <a href="#install">Install</a> ·
+  <a href="#add-your-accounts">Add accounts</a> ·
+  <a href="CHANGELOG.md">Changelog</a>
+</p>
 
 **One app to clean up all your email accounts**: Outlook / Hotmail / Microsoft 365, Gmail, iCloud, Yahoo and any IMAP account, together in one window.
 
@@ -83,7 +94,7 @@ Outlook accounts need a Microsoft "app registration". It's free, and it's done o
    - Name `MailMaster`; account types: **Accounts in any organizational directory and personal Microsoft accounts**
 2. **Authentication** → **Add a platform** → **Mobile and desktop applications** → custom redirect URI `http://localhost:3500/auth/callback`. Set **Allow public client flows** to **Yes**. **No client secret is needed.**
 3. **API permissions** → Microsoft Graph → Delegated → `Mail.ReadWrite`, `Mail.Send` (plus the default `User.Read`).
-4. Copy the **Application (client) ID**. In this GitHub repo go to **Settings → Secrets and variables → Actions → Variables** and add a variable named `MS_CLIENT_ID` with that value. It is not a secret; it's built into the app.
+4. The **Application (client) ID** goes in `mailmaster/build_info.py` (already set to MailMaster's ID). It is not a secret. To use a different ID for a build without changing the code, add a repository variable `MS_CLIENT_ID` (**Settings → Secrets and variables → Actions → Variables**).
 
 ### Making a release
 1. Update `VERSION` in `mailmaster/version.py` and add a section to `CHANGELOG.md`.

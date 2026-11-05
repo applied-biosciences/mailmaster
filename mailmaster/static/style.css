@@ -94,3 +94,14 @@ select { font: inherit; padding: 6px 10px; border: 1px solid var(--line); border
 .toolbar input[type=search] { min-width: 140px; }
 .toolbar { flex-wrap: nowrap; }
 @media (max-width: 900px) { .toolbar { flex-wrap: wrap; } }
+
+/* v1.2 branding (logo colours: cyan -> blue -> violet) */
+:root { --brand: #3a45f0; --brand-grad: linear-gradient(90deg, #12d6f5 0%, #1f6bff 45%, #6a2cf5 80%, #c04cf2 100%); }
+.top { border-bottom: 0; box-shadow: none; }
+.top::after { content: ""; position: absolute; left: 0; right: 0; bottom: -3px; height: 3px; background: var(--brand-grad); }
+.logo { width: 34px; height: 34px; object-fit: contain; }
+.brand { background: linear-gradient(90deg, #1f6bff, #6a2cf5); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.brand .ver, .brand .pill { -webkit-text-fill-color: initial; }
+.ver { color: #3a45f0; background: #eef0ff; border-color: #c9ceff; }
+.primary { background: var(--brand); border-color: var(--brand); }
+.card.active { box-shadow: 0 0 0 2px var(--c); }
