@@ -1,0 +1,14 @@
+# your data (never commit)
+.env
+accounts.json
+token_cache.json
+mailmaster.log
+# python / build
+.venv/
+__pycache__/
+*.pyc
+build/
+dist/
+*.dmg
+.pytest_cache/
+.DS_Store

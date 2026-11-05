@@ -1,0 +1,141 @@
+name: Test & build
+
+# Tests run on every push / pull request.
+# Apps are built when you push a version tag (v1.2.0 etc.) or press "Run workflow" in the Actions tab.
+# A version tag also publishes a GitHub Release with the downloads.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install flask msal requests python-dotenv keyring pytest
+      - run: pytest -q
+
+  build:
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: mac-apple-silicon
+          - os: macos-15-intel
+            target: mac-intel
+          - os: windows-latest
+            target: windows
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    env:
+      MS_CLIENT_ID: ${{ vars.MS_CLIENT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-build.txt
+
+      - name: Add Microsoft app ID
+        shell: bash
+        run: python scripts/write_build_info.py "$MS_CLIENT_ID"
+
+      - name: Version
+        id: v
+        shell: bash
+        run: echo "version=$(python -c 'import sys; sys.path.insert(0,"mailmaster"); from version import VERSION; print(VERSION)')" >> "$GITHUB_OUTPUT"
+
+      - name: Build app
+        run: pyinstaller mailmaster.spec --noconfirm
+
+      # Start the packaged app in demo mode and check it answers (catches missing files / imports).
+      - name: Smoke test (macOS)
+        if: runner.os == 'macOS'
+        env: { DEMO_MODE: "1", MAILMASTER_BROWSER: "1", BROWSER: "true" }
+        run: |
+          dist/MailMaster.app/Contents/MacOS/MailMaster &
+          for i in $(seq 1 60); do curl -sf http://localhost:3500/api/ping && break; sleep 1; done
+          curl -sf http://localhost:3500/api/summary | python3 -c "import json,sys; d=json.load(sys.stdin); assert len(d['items'])>5; print('items:', len(d['items']))"
+          curl -sf http://localhost:3500/ | grep -q "MailMaster v"
+          curl -sf -o /dev/null http://localhost:3500/static/app.js
+          pkill -f MailMaster.app || true
+
+      - name: Smoke test (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env: { DEMO_MODE: "1", MAILMASTER_BROWSER: "1", BROWSER: "echo" }
+        run: |
+          $p = Start-Process dist\MailMaster.exe -PassThru
+          $ok = $false
+          for ($i = 0; $i -lt 90; $i++) {
+            try { Invoke-RestMethod http://localhost:3500/api/ping | Out-Null; $ok = $true; break } catch { Start-Sleep 1 }
+          }
+          if (-not $ok) { Get-Content "$env:APPDATA\MailMaster\mailmaster.log" -ErrorAction SilentlyContinue; throw "App did not start" }
+          $s = Invoke-RestMethod http://localhost:3500/api/summary
+          if ($s.items.Count -lt 5) { throw "Demo mail missing" }
+          (Invoke-WebRequest http://localhost:3500/ -UseBasicParsing).Content | Select-String "MailMaster v" | Out-Null
+          Invoke-WebRequest http://localhost:3500/static/app.js -UseBasicParsing | Out-Null
+          Write-Host "items: $($s.items.Count)"
+          Stop-Process -Id $p.Id -Force
+
+      - name: Package (macOS .dmg)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p dmg && cp -R dist/MailMaster.app dmg/ && ln -s /Applications dmg/Applications
+          hdiutil create -volname "MailMaster" -srcfolder dmg -ov -format UDZO \
+            "MailMaster-${{ steps.v.outputs.version }}-${{ matrix.target }}.dmg"
+
+      - name: Package (Windows .zip)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path dist\MailMaster.exe -DestinationPath "MailMaster-${{ steps.v.outputs.version }}-windows.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MailMaster-${{ matrix.target }}
+          path: |
+            MailMaster-*.dmg
+            MailMaster-*.zip
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - name: Release notes from CHANGELOG
+        run: |
+          python3 - <<'EOF'
+          import os, re
+          v = os.environ["GITHUB_REF_NAME"].lstrip("v")
+          text = open("CHANGELOG.md", encoding="utf-8").read()
+          m = re.search(rf"^## \[?{re.escape(v)}\]?.*?$(.*?)(?=^## |\Z)", text, re.M | re.S)
+          notes = (m.group(1).strip() if m else "See CHANGELOG.md")
+          notes += "\n\n**Downloads:** Mac with Apple chip (M1 or newer) → `mac-apple-silicon.dmg` · Older Intel Mac → `mac-intel.dmg` · Windows → `windows.zip`. First-time install help is in the README."
+          open("notes.md", "w", encoding="utf-8").write(notes)
+          EOF
+      - uses: softprops/action-gh-release@v2
+        with:
+          body_path: notes.md
+          files: out/*

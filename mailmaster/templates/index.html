@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ app_name }} v{{ version }}</title>
+  <meta name="theme-color" content="#FFD60A">
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+  <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}">
+  <link rel="alternate icon" href="{{ url_for('static', filename='favicon.ico') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><img class="logo" src="{{ url_for('static', filename='favicon.svg') }}" alt=""> {{ app_name }} <span class="ver">v{{ version }}</span> {% if demo %}<span class="pill">Demo mode</span>{% endif %}</div>
+  <div class="user">
+    <select id="accountFilter"><option value="">All accounts</option></select>
+    <button id="refresh" class="ghost">Refresh</button>
+    <button id="openAccounts" class="ghost">Accounts</button>
+  </div>
+</header>
+
+<main class="app">
+  <div id="errors"></div>
+  <section id="cards" class="cards"></section>
+
+  <section class="toolbar">
+    <label class="check"><input type="checkbox" id="selectAll"> Select all</label>
+    <input id="search" type="search" placeholder="Search sender or subject…">
+    <label class="check" id="groupWrap"><input type="checkbox" id="groupBy"> Group by sender</label>
+    <span class="spacer"></span>
+    <label class="check muted" id="permWrap"><input type="checkbox" id="permanent"> Delete permanently</label>
+    <button id="unsubSel" class="hidden" disabled>Unsubscribe</button>
+    <button id="deleteSel" class="danger" disabled>Delete</button>
+  </section>
+
+  <section id="list" class="list"><div class="empty">Loading your mail…</div></section>
+</main>
+
+<!-- Unsubscribe dialog -->
+<div id="modal" class="modal hidden">
+  <div class="box">
+    <h3 id="mTitle">Unsubscribe</h3>
+    <p id="mText"></p>
+    <label class="check"><input type="checkbox" id="mDeleteAll" checked> <span>Also delete all <b id="mCount"></b> emails from <span id="mWho">this sender</span> (all accounts)</span></label>
+    <div class="actions">
+      <button id="mCancel" class="ghost">Cancel</button>
+      <button id="mOk" class="primary">Unsubscribe</button>
+    </div>
+  </div>
+</div>
+
+<!-- Accounts dialog -->
+<div id="accModal" class="modal hidden">
+  <div class="box wide">
+    <div class="box-head"><h3>Accounts</h3><button id="accClose" class="ghost small">Close</button></div>
+    <div id="accList" class="acc-list"></div>
+
+    <h4>Add an account</h4>
+    <div class="add-row">
+      <a id="addMs" class="btn primary" href="/login/microsoft">Outlook / Hotmail / Microsoft 365</a>
+      <button class="addImap" data-p="gmail">Gmail</button>
+      <button class="addImap" data-p="icloud">iCloud</button>
+      <button class="addImap" data-p="yahoo">Yahoo</button>
+      <button class="addImap" data-p="other">Other (IMAP)</button>
+    </div>
+    <p id="msHint" class="hint hidden">This copy of MailMaster has no Microsoft app ID, so Outlook accounts can't be added. Use an official build from the Releases page.</p>
+
+    <form id="imapForm" class="imap-form hidden" autocomplete="off">
+      <h4 id="imapTitle">Gmail</h4>
+      <p id="imapHelp" class="hint"></p>
+      <label>Email address <input name="email" type="email" required></label>
+      <label>App password <input name="password" type="password" required></label>
+      <div id="advanced" class="grid2">
+        <label>IMAP server <input name="imap_host" placeholder="imap.example.com"></label>
+        <label>IMAP port <input name="imap_port" type="number" value="993"></label>
+        <label>SMTP server <input name="smtp_host" placeholder="smtp.example.com"></label>
+        <label>SMTP port <input name="smtp_port" type="number" value="465"></label>
+        <label>Username (if not your email) <input name="username"></label>
+        <label>Label <input name="name" placeholder="Work"></label>
+      </div>
+      <input type="hidden" name="provider">
+      <div class="actions"><button type="button" id="imapCancel" class="ghost">Cancel</button><button class="primary" id="imapSave">Connect</button></div>
+    </form>
+  </div>
+</div>
+
+<!-- Confirm dialog -->
+<div id="confirmModal" class="modal hidden">
+  <div class="box">
+    <p id="cText"></p>
+    <div class="actions"><button id="cCancel" class="ghost">Cancel</button><button id="cOk" class="primary">Continue</button></div>
+  </div>
+</div>
+
+<!-- Bulk unsubscribe results -->
+<div id="bulkModal" class="modal hidden">
+  <div class="box wide">
+    <div class="box-head"><h3 id="bTitle">Unsubscribe results</h3><button id="bClose" class="ghost small">Close</button></div>
+    <div id="bBody" class="acc-list"></div>
+  </div>
+</div>
+
+<footer class="foot">{{ app_name }} v{{ version }} · your mail stays on this computer</footer>
+<div id="toast" class="toast hidden"></div>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
