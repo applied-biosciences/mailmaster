@@ -98,13 +98,11 @@ Outlook accounts need a Microsoft "app registration". It's free, and it's done o
 
 ### Making a release
 1. Update `VERSION` in `mailmaster/version.py` and add a section to `CHANGELOG.md`.
-2. Commit, then tag and push:
-   ```
-   git tag v1.2.0 && git push origin main --tags
-   ```
-3. GitHub Actions tests the code, builds the Mac (Apple chip + Intel) and Windows apps, checks that each one starts, and publishes them on the Releases page (about 15 minutes).
+2. Commit to `main`.
+3. Go to **Actions → Test & build → Run workflow**, tick **Publish release**, then click **Run workflow**.
+4. GitHub Actions tests the code, builds the Mac (Apple chip + Intel) and Windows apps, and checks that each one starts. It then publishes them on the Releases page as `v<version>` (about 15 minutes). If any build fails, nothing is published.
 
-To build without releasing: **Actions → Test & build → Run workflow**. The files appear under that run's **Artifacts**.
+To build without releasing, run it with **Publish release** unticked. The files appear under that run's **Artifacts**. Pushing a tag such as `v1.2.0` also releases.
 
 Note: on a private repo, macOS build minutes count 10× against the organisation's Actions allowance. That's why apps are only built for tags and manual runs.
 
