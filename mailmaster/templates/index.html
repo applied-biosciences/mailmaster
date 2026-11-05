@@ -17,6 +17,7 @@
   <div class="user">
     <select id="accountFilter"><option value="">All accounts</option></select>
     <button id="refresh" class="ghost">Refresh</button>
+    <button id="openSettings" class="ghost">Settings</button>
     <button id="openAccounts" class="ghost">Accounts</button>
   </div>
 </header>
@@ -59,30 +60,57 @@
 
     <h4>Add an account</h4>
     <div class="add-row">
-      <a id="addMs" class="btn primary" href="/login/microsoft">Outlook / Hotmail / Microsoft 365</a>
+      <button id="addMs" class="primary">Outlook / Hotmail / Microsoft 365</button>
       <button class="addImap" data-p="gmail">Gmail</button>
       <button class="addImap" data-p="icloud">iCloud</button>
       <button class="addImap" data-p="yahoo">Yahoo</button>
       <button class="addImap" data-p="other">Other (IMAP)</button>
     </div>
+    <p id="msWait" class="hint hidden">Finish signing in to Microsoft in your web browser. If you're already signed in there, just pick your account. MailMaster updates by itself when you're done. <button type="button" class="small ghost" id="msCancel">Stop waiting</button></p>
     <p id="msHint" class="hint hidden">This copy of MailMaster has no Microsoft app ID, so Outlook accounts can't be added. Use an official build from the Releases page.</p>
 
     <form id="imapForm" class="imap-form hidden" autocomplete="off">
       <h4 id="imapTitle">Gmail</h4>
       <p id="imapHelp" class="hint"></p>
-      <label>Email address <input name="email" type="email" required></label>
-      <label>App password <input name="password" type="password" required></label>
-      <div id="advanced" class="grid2">
-        <label>IMAP server <input name="imap_host" placeholder="imap.example.com"></label>
-        <label>IMAP port <input name="imap_port" type="number" value="993"></label>
-        <label>SMTP server <input name="smtp_host" placeholder="smtp.example.com"></label>
-        <label>SMTP port <input name="smtp_port" type="number" value="465"></label>
-        <label>Username (if not your email) <input name="username"></label>
-        <label>Label <input name="name" placeholder="Work"></label>
-      </div>
+      <div class="paste-all"><button type="button" class="small" id="pasteAll">📋 Paste all settings</button>
+        <span class="hint">Copied account details (email, username, servers, password)? Paste them all at once.</span></div>
+      <label>Email address
+        <span class="field"><input name="email" type="email" required autocomplete="off"><button type="button" class="small paste" data-paste="email">Paste</button></span></label>
+      <label><span id="pwLabel">App password</span>
+        <span class="field"><input name="password" type="password" required autocomplete="off">
+          <button type="button" class="small" id="pwShow" title="Show / hide">Show</button>
+          <button type="button" class="small paste" data-paste="password">Paste</button></span></label>
+      <div class="pw-saved"><button type="button" class="small" id="pwSaved">🔑 Use saved password</button>
+        <span class="hint" id="pwSavedHint">Looks in this computer's saved passwords. You'll be asked to approve.</span></div>
+      <details id="advanced" class="server-settings">
+        <summary>Server settings (username, IMAP, SMTP)</summary>
+        <div class="grid2">
+          <label>Username <span class="field"><input name="username" placeholder="Usually your email address"><button type="button" class="small paste" data-paste="username">Paste</button></span></label>
+          <label>Label <input name="name" placeholder="Work"></label>
+          <label>IMAP server <span class="field"><input name="imap_host" placeholder="imap.example.com"><button type="button" class="small paste" data-paste="imap_host">Paste</button></span></label>
+          <label>IMAP port <input name="imap_port" type="number" value="993"></label>
+          <label>SMTP server <span class="field"><input name="smtp_host" placeholder="smtp.example.com"><button type="button" class="small paste" data-paste="smtp_host">Paste</button></span></label>
+          <label>SMTP port <input name="smtp_port" type="number" value="465"></label>
+        </div>
+      </details>
       <input type="hidden" name="provider">
       <div class="actions"><button type="button" id="imapCancel" class="ghost">Cancel</button><button class="primary" id="imapSave">Connect</button></div>
     </form>
+  </div>
+</div>
+
+<!-- Settings dialog -->
+<div id="setModal" class="modal hidden">
+  <div class="box">
+    <div class="box-head"><h3>Settings</h3><button id="setClose" class="ghost small">Close</button></div>
+    <h4>Emails to load per account</h4>
+    <p class="hint">"Max" loads everything in that folder. Large mailboxes take longer to load.</p>
+    <div class="set-grid">
+      <label>Inbox <select id="setInbox"></select></label>
+      <label>Junk / Spam <select id="setJunk"></select></label>
+      <label>Deleted Mail <select id="setDeleted"></select></label>
+    </div>
+    <div class="actions"><button id="setCancel" class="ghost">Cancel</button><button id="setSave" class="primary">Save and reload</button></div>
   </div>
 </div>
 

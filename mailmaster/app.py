@@ -2,16 +2,20 @@
 Desktop app entry point: desktop.py.  Developers: `python mailmaster/app.py`, then open http://localhost:3500
 """
 import os
+import threading
+import time
 import webbrowser
 from concurrent.futures import ThreadPoolExecutor
 
-from flask import Flask, jsonify, redirect, render_template, request, session, url_for
+from flask import Flask, jsonify, redirect, render_template, request, url_for
 from markupsafe import escape
 
 import accounts
 import classifier
 import config
 import imap_provider
+import saved_passwords
+import settings
 import unsubscribe
 
 if config.DEMO_MODE:
@@ -27,6 +31,22 @@ app.secret_key = config.FLASK_SECRET
 # Last fetch, keyed "accountId|nativeId" -> {"acc": account, "m": normalized msg, "category", "reason"}
 STORE = {}
 
+# Microsoft sign-ins in progress, keyed by OAuth state (sign-in happens in the person's normal browser)
+FLOWS = {}
+_flows_lock = threading.Lock()
+
+
+# ---------- protection for a server that runs on the person's own computer ----------
+@app.before_request
+def guard_local_requests():
+    """Only answer requests addressed to this computer, and only accept changes from MailMaster's own page.
+    Stops websites open in the person's browser from triggering actions (CSRF / DNS rebinding)."""
+    if request.host.split(":")[0] not in ("localhost", "127.0.0.1"):
+        return "Forbidden", 403
+    if request.method in ("POST", "PUT", "PATCH", "DELETE") and request.headers.get("X-MailMaster") != "1":
+        return jsonify({"error": "Request not allowed."}), 403
+    return None
+
 
 # ---------- accounts & providers ----------
 def all_accounts():
@@ -40,13 +60,15 @@ def provider(acc):
 def fetch_account(acc):
     if config.DEMO_MODE:
         return demo_data.messages(acc["id"])
-    return provider(acc).fetch(acc, config.MAX_MESSAGES, config.MAX_JUNK, config.MAX_DELETED)
+    s = settings.load()
+    return provider(acc).fetch(acc, settings.limit(s["max_inbox"]), settings.limit(s["max_junk"]),
+                               settings.limit(s["max_deleted"]))
 
 
 def fetch_deleted_for_account(acc):
     if config.DEMO_MODE:
         return demo_data.messages(acc["id"], "deleted")
-    return provider(acc).fetch_deleted(acc, config.MAX_DELETED)
+    return provider(acc).fetch_deleted(acc, settings.limit(settings.load()["max_deleted"]))
 
 
 def delete_for_account(acc, items, permanent):
@@ -155,29 +177,70 @@ def index():
 
 
 # ---------- Microsoft sign-in ----------
+# Sign-in opens in the person's normal web browser, so any Microsoft login already saved there
+# (Outlook on the web, Microsoft 365, Edge signed in with Windows) is reused: they just pick the account.
+NO_MS_ID = ("This copy of MailMaster has no Microsoft app ID, so Outlook accounts can't be added. "
+            "Use an official build, or set CLIENT_ID (see README).")
+
+
+def _new_flow():
+    flow = auth.start_login()
+    with _flows_lock:
+        now = time.time()
+        for k in [k for k, (_, t) in FLOWS.items() if now - t > 900]:  # forget sign-ins older than 15 min
+            FLOWS.pop(k, None)
+        FLOWS[flow["state"]] = (flow, now)
+    return flow
+
+
+@app.route("/api/ms-login/start", methods=["POST"])
+def api_ms_login_start():
+    if config.DEMO_MODE:
+        return jsonify({"error": "Adding accounts is turned off in demo mode."}), 400
+    if not config.CLIENT_ID:
+        return jsonify({"error": NO_MS_ID}), 400
+    flow = _new_flow()
+    webbrowser.open(flow["auth_uri"])
+    return jsonify({"ok": True, "url": flow["auth_uri"]})
+
+
 @app.route("/login/microsoft")
 def login_ms():
+    """Same-tab sign-in (used when MailMaster itself runs in a browser tab)."""
     if config.DEMO_MODE:
         return redirect(url_for("index"))
     if not config.CLIENT_ID:
-        return ("This copy of MailMaster has no Microsoft app ID, so Outlook accounts can't be added. "
-                "Use an official build, or set CLIENT_ID (see README).", 400)
-    flow = auth.start_login()
-    session["flow"] = flow
-    return redirect(flow["auth_uri"])
+        return NO_MS_ID, 400
+    return redirect(_new_flow()["auth_uri"])
+
+
+def _result_page(title, body, ok=True):
+    color = "#1a8a5a" if ok else "#c8372d"
+    return f"""<!doctype html><html><head><meta charset="utf-8"><title>MailMaster</title>
+<link rel="icon" href="/static/favicon-32.png"></head>
+<body style="font:16px system-ui,-apple-system,'Segoe UI',sans-serif;background:#f6f7f9;color:#1d2330;
+display:grid;place-items:center;min-height:90vh;margin:0">
+<div style="background:#fff;border:1px solid #e4e7ec;border-radius:16px;padding:32px 40px;max-width:520px;text-align:center">
+<img src="/static/logo.png" width="72" alt=""><h2 style="color:{color};margin:12px 0">{title}</h2>
+<p style="color:#4a5163;line-height:1.5">{body}</p></div></body></html>"""
 
 
 @app.route("/auth/callback")
 def callback():
-    info, err = auth.finish_login(session.pop("flow", {}), request.args)
+    state = request.args.get("state", "")
+    with _flows_lock:
+        entry = FLOWS.pop(state, None)
+    if not entry:
+        return _result_page("Sign-in expired", "Please go back to MailMaster and click <b>Outlook</b> again.", ok=False), 400
+    info, err = auth.finish_login(entry[0], request.args)
     if err:
-        return (f"<h3>Sign-in failed</h3><pre style='white-space:pre-wrap'>{escape(err)}</pre>"
-                f"<a href='/'>Back to MailMaster</a>"), 400
+        return _result_page("Sign-in failed", f"<code style='white-space:pre-wrap'>{escape(err)}</code>", ok=False), 400
     accounts.upsert({"id": accounts.make_id("ms", info["home_account_id"]), "type": "microsoft",
                      "provider": "outlook", "email": info["username"], "name": "Outlook",
                      "home_account_id": info["home_account_id"]})
     STORE.clear()
-    return redirect(url_for("index"))
+    return _result_page(f"Signed in as {escape(info['username'])}",
+                        "You can close this tab and go back to MailMaster. Your mail will appear in a moment.")
 
 
 # ---------- API: accounts ----------
@@ -202,7 +265,7 @@ def api_add_imap():
     acc = {
         "type": "imap", "provider": prov, "email": email_addr,
         "username": (b.get("username") or email_addr).strip(),
-        "name": preset["label"] if prov != "other" else (b.get("name") or "IMAP"),
+        "name": (b.get("name") or "").strip() or (preset["label"] if prov != "other" else "IMAP"),
         "imap_host": (b.get("imap_host") or preset["imap_host"]).strip(),
         "imap_port": int(b.get("imap_port") or preset["imap_port"]),
         "smtp_host": (b.get("smtp_host") or preset["smtp_host"]).strip(),
@@ -220,6 +283,32 @@ def api_add_imap():
     accounts.upsert(acc)
     STORE.clear()
     return jsonify({"ok": True, "account": accounts.public(acc)})
+
+
+@app.route("/api/saved-password", methods=["POST"])
+def api_saved_password():
+    """Finds a password saved on this computer (Keychain / Credential Manager) for the account being added."""
+    if config.DEMO_MODE:
+        return jsonify({"error": "Turned off in demo mode."}), 400
+    b = request.get_json(force=True) or {}
+    preset = imap_provider.PRESETS.get(b.get("provider", "other"), imap_provider.PRESETS["other"])
+    hosts = [b.get("imap_host") or preset["imap_host"], b.get("smtp_host") or preset["smtp_host"]]
+    pw, where = saved_passwords.find(b.get("email", ""), b.get("username", ""), hosts)
+    if not pw:
+        return jsonify({"found": False, "message": where})
+    return jsonify({"found": True, "password": pw, "message": f"Filled in from {where}."})
+
+
+@app.route("/api/settings", methods=["GET", "POST"])
+def api_settings():
+    if request.method == "POST":
+        try:
+            data = settings.save(request.get_json(force=True) or {})
+        except (ValueError, TypeError) as e:
+            return jsonify({"error": str(e)}), 400
+        STORE.clear()
+        return jsonify({"settings": data})
+    return jsonify({"settings": settings.load(), "choices": settings.LIMIT_CHOICES})
 
 
 @app.route("/api/accounts/<acc_id>", methods=["DELETE"])

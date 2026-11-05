@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -26,6 +27,37 @@ def _setup_logging():
     logging.basicConfig(level=logging.INFO, stream=sys.stderr,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     logging.getLogger("werkzeug").setLevel(logging.WARNING)
+
+
+class ClipboardApi:
+    """Copy/paste for the app window (exposed to the page as window.pywebview.api).
+    The macOS web view doesn't always pass Cmd+V/Cmd+C through, so the page asks Python instead."""
+
+    def read_clipboard(self):
+        try:
+            if sys.platform == "darwin":
+                return subprocess.run(["pbpaste"], capture_output=True, text=True, timeout=5).stdout
+            if os.name == "nt":
+                r = subprocess.run(["powershell", "-NoProfile", "-Command", "Get-Clipboard -Raw"],
+                                   capture_output=True, text=True, timeout=5,
+                                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                return r.stdout.rstrip("\r\n")
+        except Exception as e:  # noqa: BLE001
+            logging.warning("Clipboard read failed: %s", e)
+        return ""
+
+    def write_clipboard(self, text):
+        try:
+            if sys.platform == "darwin":
+                subprocess.run(["pbcopy"], input=text, text=True, timeout=5)
+                return True
+            if os.name == "nt":
+                subprocess.run(["clip"], input=text, text=True, timeout=5,
+                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                return True
+        except Exception as e:  # noqa: BLE001
+            logging.warning("Clipboard write failed: %s", e)
+        return False
 
 
 def _ping():
@@ -87,7 +119,7 @@ def main():
     if not use_browser:
         try:
             import webview
-            webview.create_window(f"{config.APP_NAME} v{config.VERSION}", URL,
+            webview.create_window(f"{config.APP_NAME} v{config.VERSION}", URL, js_api=ClipboardApi(),
                                   width=1280, height=860, min_size=(900, 600))
             webview.start()
             return 0  # window closed -> quit (server thread is a daemon)

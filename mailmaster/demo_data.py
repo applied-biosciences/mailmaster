@@ -32,6 +32,7 @@ _RAW = {
     ],
     "demo-imap": [
         ("Finance Team", "finance@yourcompany.com", "Q4 budget sign-off needed", "Please approve by Friday.", {}, "normal", "inbox"),
+        ("Dropbox", "no-reply@dropbox.com", "Your files this week", "Here is what happened in your Dropbox.", {}, "normal", "inbox"),
         ("GitHub", "noreply@github.com", "[GitHub] A new SSH key was added", "A new public key was added to your account.", {}, "normal", "inbox"),
         ("The Batch", "hello@news.example.com", "Issue 212: agents in production", "What we learned from deploying agents.", LIST, "normal", "inbox"),
     ],

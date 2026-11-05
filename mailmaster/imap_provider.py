@@ -21,6 +21,7 @@ PRESETS = {
 HEADER_FIELDS = ("FROM SUBJECT DATE MESSAGE-ID LIST-UNSUBSCRIBE LIST-UNSUBSCRIBE-POST "
                  "LIST-ID PRECEDENCE IMPORTANCE X-PRIORITY")
 JUNK_NAMES = ["[Gmail]/Spam", "Junk", "Junk Email", "Junk E-mail", "Spam", "Bulk Mail", "Bulk"]
+DELETE_CHUNK = 500  # UIDs per IMAP command
 TRASH_NAMES = ["[Gmail]/Trash", "[Gmail]/Bin", "Trash", "Deleted Items", "Deleted Messages", "Bin"]
 
 
@@ -177,13 +178,15 @@ def _fetch(acc, wanted):
         names = _folder_names(special_folders(M))
         for key, n in wanted:
             folder = names.get(key)
-            if not folder or n <= 0:
+            if not folder or (n is not None and n <= 0):
                 continue
             typ, _ = M.select(_q(folder), readonly=True)
             if typ != "OK":
                 continue
             typ, data = M.uid("SEARCH", None, "ALL")
-            uids = (data[0] or b"").split()[-n:] if typ == "OK" else []
+            uids = (data[0] or b"").split() if typ == "OK" else []
+            if n is not None:
+                uids = uids[-n:]
             for i in range(0, len(uids), 100):
                 chunk = b",".join(uids[i:i + 100]).decode()
                 typ, data = M.uid("FETCH", chunk,
@@ -216,35 +219,45 @@ def delete(acc, items, permanent):
             folder = names.get(key)
             if not folder or M.select(_q(folder))[0] != "OK":
                 continue
-            uidset = ",".join(u for _, u in pairs)
             in_trash = key == "deleted"
             to_trash = not in_trash and trash and (not permanent or acc.get("provider") == "gmail")
-            if in_trash:  # already in Trash: delete for good
-                ok = M.uid("STORE", uidset, "+FLAGS.SILENT", r"(\Deleted)")[0] == "OK"
-                if ok:
-                    M.uid("EXPUNGE", uidset) if "UIDPLUS" in caps else M.expunge()
-            elif to_trash:
-                if "MOVE" in caps:
-                    ok = M.uid("MOVE", uidset, _q(trash))[0] == "OK"
-                else:
-                    ok = M.uid("COPY", uidset, _q(trash))[0] == "OK"
-                    if ok:
-                        M.uid("STORE", uidset, "+FLAGS.SILENT", r"(\Deleted)")
-                        M.uid("EXPUNGE", uidset) if "UIDPLUS" in caps else M.expunge()
-            elif permanent:
-                ok = M.uid("STORE", uidset, "+FLAGS.SILENT", r"(\Deleted)")[0] == "OK"
-                if ok:
-                    M.uid("EXPUNGE", uidset) if "UIDPLUS" in caps else M.expunge()
-            else:
+            if not (in_trash or to_trash or permanent):
                 raise RuntimeError("No Trash folder found for this account. Tick 'Delete permanently' to delete.")
-            if ok:
-                deleted += [i for i, _ in pairs]
+            for start in range(0, len(pairs), DELETE_CHUNK):
+                chunk = pairs[start:start + DELETE_CHUNK]
+                if _delete_chunk(M, caps, ",".join(u for _, u in chunk), in_trash, to_trash, trash):
+                    deleted += [i for i, _ in chunk]
     finally:
         try:
             M.logout()
         except Exception:  # noqa: BLE001
             pass
     return deleted
+
+
+def _expunge(M, caps, uidset):
+    M.uid("EXPUNGE", uidset) if "UIDPLUS" in caps else M.expunge()
+
+
+def _delete_chunk(M, caps, uidset, in_trash, to_trash, trash):
+    """Deletes one batch of UIDs in the selected folder. Returns True on success."""
+    if in_trash:  # already in Trash: delete for good
+        ok = M.uid("STORE", uidset, "+FLAGS.SILENT", r"(\Deleted)")[0] == "OK"
+        if ok:
+            _expunge(M, caps, uidset)
+    elif to_trash:
+        if "MOVE" in caps:
+            ok = M.uid("MOVE", uidset, _q(trash))[0] == "OK"
+        else:
+            ok = M.uid("COPY", uidset, _q(trash))[0] == "OK"
+            if ok:
+                M.uid("STORE", uidset, "+FLAGS.SILENT", r"(\Deleted)")
+                _expunge(M, caps, uidset)
+    else:  # permanent
+        ok = M.uid("STORE", uidset, "+FLAGS.SILENT", r"(\Deleted)")[0] == "OK"
+        if ok:
+            _expunge(M, caps, uidset)
+    return ok
 
 
 def send(acc, to, subject, body):

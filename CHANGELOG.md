@@ -6,6 +6,22 @@
 
 All notable changes to MailMaster are listed here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.2.1] - 2026-11-05
+### Added
+- **Unclassified** category for emails that match no other rule, such as automated emails with no clear topic, or emails Outlook files under "Other".
+- **Settings → Emails to load per account**: choose how many Inbox, Junk and Deleted emails to load (100 up to 5,000, or **Max** for everything). Deleted Mail is no longer capped at 100.
+- **Paste** buttons on every account field, plus **Paste all settings** to fill email, username, IMAP/SMTP servers and password from copied text in one go.
+- **Use saved password**: finds an account's password already saved on the computer (Mac Keychain or Windows Credential Manager). The computer asks you to approve with your password or Touch ID first.
+- Username, IMAP and SMTP settings can now be edited for Gmail, iCloud and Yahoo too, under **Server settings**.
+
+### Changed
+- **Microsoft sign-in opens in your normal web browser**, so a Microsoft / Outlook login you already have there is reused and you just pick your account. MailMaster picks up the new account automatically.
+- Cmd+V, Cmd+C, Cmd+X and Cmd+A now always work in the Mac app window.
+- Very large deletes on Gmail/IMAP are sent in batches of 500.
+
+### Security
+- The local MailMaster server now only accepts changes from MailMaster's own window. This stops websites open in your browser from triggering actions on it.
+
 ## [1.2.0] - 2026-11-05
 ### Added
 - **Desktop app** for Mac (Apple chip and Intel) and Windows. It opens in its own window, and no Python or setup is needed.

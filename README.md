@@ -13,7 +13,7 @@
 
 **One app to clean up all your email accounts**: Outlook / Hotmail / Microsoft 365, Gmail, iCloud, Yahoo and any IMAP account, together in one window.
 
-- Sorts mail into **Priority, Transactions, Updates, Promotions, Mailing List, Junk, Deleted Mail**
+- Sorts mail into **Priority, Transactions, Updates, Promotions, Mailing List, Unclassified, Junk, Deleted Mail**
 - Shows all accounts together or one at a time (each email is tagged with its account)
 - **Group by sender** in any category
 - Delete one, selected, or all emails from a sender (to Deleted Mail, or permanently)
@@ -53,11 +53,16 @@ Click **Accounts** in the top-right corner.
 
 | Account | What you need |
 |---|---|
-| **Outlook / Hotmail / Microsoft 365** | Just sign in with Microsoft. Work accounts: your IT team may need to approve MailMaster once. |
+| **Outlook / Hotmail / Microsoft 365** | Click **Outlook**: sign-in opens in your web browser. If you're already signed in to Microsoft there, just pick your account. Work accounts: your IT team may need to approve MailMaster once. |
 | **Gmail** | An **app password**: turn on 2-Step Verification, then create one at <https://myaccount.google.com/apppasswords> |
 | **iCloud** | An **app-specific password**: <https://account.apple.com> → Sign-In and Security → App-Specific Passwords |
 | **Yahoo** | An **app password**: Yahoo Account Security → Generate app password |
 | **Other (IMAP)** | Your provider's IMAP and SMTP server names (listed on their help pages) |
+
+Tips when adding Gmail, iCloud, Yahoo or other accounts:
+- **Paste** buttons sit next to every field, and **Paste all settings** fills email, username, servers and password from copied text in one go.
+- **Use saved password** finds the password if it's already saved on your computer (for example by Apple Mail). Your Mac or PC asks you to approve first.
+- **Server settings** lets you change the username, IMAP and SMTP details for any provider.
 
 You can add as many accounts as you like. **Accounts → Remove** disconnects one. Your emails are not touched.
 
@@ -67,15 +72,17 @@ You can add as many accounts as you like. **Accounts → Remove** disconnects on
 - **Delete** moves emails to **Deleted Mail**. Deleting from Deleted Mail removes them for good. Gmail empties its Trash after 30 days.
 - Some senders need you to confirm on their website. MailMaster shows a **Confirm on their site** button for those.
 - **Refresh** re-reads all accounts.
+- **Settings** sets how many emails load per account for Inbox, Junk and Deleted Mail, from 100 up to **Max** (everything).
+- **Unclassified** holds emails that match no other rule.
 
 ## Privacy & where things are stored
 Everything stays on your computer:
 - **Mac:** `~/Library/Application Support/MailMaster/`
 - **Windows:** `%APPDATA%\MailMaster\`
 
-That folder holds your account list (`accounts.json`), Microsoft sign-ins (`token_cache.json`) and a log (`mailmaster.log`). Gmail/iCloud/Yahoo/IMAP passwords are kept in the **macOS Keychain** or **Windows Credential Manager**.
+That folder holds your account list (`accounts.json`), Microsoft sign-ins (`token_cache.json`), your settings (`settings.json`) and a log (`mailmaster.log`). Gmail/iCloud/Yahoo/IMAP passwords are kept in the **macOS Keychain** or **Windows Credential Manager**.
 
-MailMaster reads your latest 300 inbox emails per account, plus 100 each from Junk and Deleted. For more, put a `.env` file in that folder containing `MAX_MESSAGES=1000`.
+By default MailMaster loads the latest 300 inbox emails per account, plus 100 each from Junk and Deleted. To change this, use **Settings** (up to **Max**). Your choice is saved in `settings.json` in that folder.
 
 ## Troubleshooting
 - **"Port 3500 is being used by another program":** close the other program, or put `PORT=3600` in a `.env` file in the data folder. If you change the port, Microsoft sign-in needs that redirect address added too (see Maintainers).
@@ -127,6 +134,8 @@ mailmaster/
   ms_provider.py    Outlook / Microsoft 365 (Microsoft Graph)
   imap_provider.py  Gmail, iCloud, Yahoo, other IMAP
   classifier.py     sorting rules (edit the keyword lists to tune)
+  settings.py       per-person settings (emails to load)
+  saved_passwords.py  'Use saved password' (Keychain / Credential Manager)
   unsubscribe.py    List-Unsubscribe handling (one-click, email, link)
   accounts.py       stored accounts and passwords (Keychain / Credential Manager)
   templates/, static/   the interface

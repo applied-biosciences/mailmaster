@@ -90,6 +90,21 @@ def test_delete_moves_to_trash():
     assert ("MOVE", "10", '"[Gmail]/Trash"') in FakeIMAP.log
 
 
+def test_max_loads_everything():
+    msgs = ip.fetch(ACC, None, None, None)  # "Max" for every folder
+    assert {m["folder"] for m in msgs} == {"inbox", "junk", "deleted"}
+    search = [l for l in FakeIMAP.log if l[0] == "FETCH"]
+    assert search and search[0][1] == "10,11"  # both inbox emails requested
+
+
+def test_big_delete_is_split_into_batches(monkeypatch):
+    monkeypatch.setattr(ip, "DELETE_CHUNK", 2)
+    items = [{"id": f"deleted:{n}", "folder": "deleted"} for n in range(1, 6)]
+    assert len(ip.delete(ACC, items, permanent=False)) == 5
+    stores = [l[1] for l in FakeIMAP.log if l[0] == "STORE"]
+    assert stores == ["1,2", "3,4", "5"]
+
+
 def test_delete_from_trash_is_permanent():
     trash = ip.fetch_deleted(ACC, 10)
     assert ip.delete(ACC, trash, permanent=False) == ["deleted:7"]

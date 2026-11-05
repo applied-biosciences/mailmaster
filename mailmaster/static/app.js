@@ -34,13 +34,73 @@ document.addEventListener("click", (e) => {
   if (a && /^https?:/i.test(a.href)) { e.preventDefault(); e.stopPropagation(); openExternal(a.href); }
 }, true);
 
+// ---------- clipboard (paste works in the app window and in a browser) ----------
+const inAppWindow = () => !!(window.pywebview && window.pywebview.api);
+const isMac = /Mac/i.test(navigator.platform || navigator.userAgent);
+
+async function readClipboard() {
+  if (inAppWindow() && window.pywebview.api.read_clipboard) return (await window.pywebview.api.read_clipboard()) || "";
+  try { return await navigator.clipboard.readText(); }
+  catch (e) { toast("Your browser blocked reading the clipboard. Click the field and press " + (isMac ? "Cmd" : "Ctrl") + "+V."); return ""; }
+}
+async function writeClipboard(text) {
+  if (inAppWindow() && window.pywebview.api.write_clipboard) return window.pywebview.api.write_clipboard(text);
+  try { await navigator.clipboard.writeText(text); } catch (e) { /* ignore */ }
+}
+function insertText(el, text) {
+  let s = el.value.length, e = el.value.length;
+  try { if (el.selectionStart != null) { s = el.selectionStart; e = el.selectionEnd; } } catch (_) { /* email/number inputs */ }
+  el.value = el.value.slice(0, s) + text + el.value.slice(e);
+  try { el.setSelectionRange(s + text.length, s + text.length); } catch (_) { /* not supported for this input type */ }
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+}
+// In the Mac app window, handle Cmd+V / C / X / A in text boxes ourselves so they always work.
+document.addEventListener("keydown", async (e) => {
+  if (!inAppWindow() || !isMac || !e.metaKey || e.ctrlKey || e.altKey) return;
+  const el = document.activeElement;
+  if (!el || !/^(INPUT|TEXTAREA)$/.test(el.tagName)) return;
+  const k = e.key.toLowerCase();
+  if (!["v", "c", "x", "a"].includes(k)) return;
+  e.preventDefault();
+  if (k === "a") { el.select(); return; }
+  if (k === "v") { insertText(el, (await readClipboard()).replace(/\r?\n$/, "")); return; }
+  let sel = "";
+  try { sel = el.value.slice(el.selectionStart, el.selectionEnd); } catch (_) { sel = el.value; }
+  if (el.type === "password") return;  // never copy passwords out
+  await writeClipboard(sel);
+  if (k === "x" && sel) insertText(el, "");
+}, true);
+
+// "Paste all settings": fills whatever it recognises from copied account details
+function parseSettings(text) {
+  const out = {}, lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const setHost = (key, v) => { const m = v.match(/^([^\s:/]+)(?::(\d+))?/); if (m) { out[key + "_host"] = m[1]; if (m[2]) out[key + "_port"] = m[2]; } };
+  for (const line of lines) {
+    const m = line.match(/^([^:=\t]{2,40})\s*[:=\t]\s*(.+)$/);
+    if (!m) continue;
+    const k = m[1].toLowerCase(), v = m[2].trim();
+    if (/imap/.test(k) && /port/.test(k)) out.imap_port = v.replace(/\D/g, "");
+    else if (/smtp|outgoing/.test(k) && /port/.test(k)) out.smtp_port = v.replace(/\D/g, "");
+    else if (/imap|incoming/.test(k)) setHost("imap", v);
+    else if (/smtp|outgoing/.test(k)) setHost("smtp", v);
+    else if (/pass(word|code)?|app.?pass/.test(k)) out.password = v;
+    else if (/user|login/.test(k)) out.username = v;
+    else if (/e-?mail|address|account/.test(k)) out.email = v;
+  }
+  const email = text.match(/[\w.+-]+@[\w-]+(\.[\w-]+)+/);
+  if (!out.email && email) out.email = email[0];
+  if (!out.imap_host) { const h = text.match(/\bimap(\.[\w-]+)+/i); if (h) out.imap_host = h[0]; }
+  if (!out.smtp_host) { const h = text.match(/\bsmtp(\.[\w-]+)+/i); if (h) out.smtp_host = h[0]; }
+  return out;
+}
+
 function toast(msg, ms = 4000) {
   const t = $("#toast"); t.textContent = msg; t.classList.remove("hidden");
   clearTimeout(t._h); t._h = setTimeout(() => t.classList.add("hidden"), ms);
 }
 
 async function api(path, opts = {}) {
-  const r = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
+  const r = await fetch(path, { ...opts, headers: { "Content-Type": "application/json", "X-MailMaster": "1", ...(opts.headers || {}) } });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error || r.statusText);
   return j;
@@ -91,10 +151,86 @@ function showImapForm(p) {
   f.provider.value = p;
   $("#imapTitle").textContent = p === "other" ? "Other IMAP account" : preset.label;
   $("#imapHelp").innerHTML = IMAP_HELP[p];
-  $("#advanced").classList.toggle("hidden", p !== "other");
+  $("#advanced").open = p === "other";
+  f.imap_host.value = preset.imap_host || ""; f.smtp_host.value = preset.smtp_host || "";
   f.imap_port.value = preset.imap_port; f.smtp_port.value = preset.smtp_port;
+  $("#pwLabel").textContent = p === "other" ? "Password" : "App password";
+  f.password.type = "password"; $("#pwShow").textContent = "Show";
+  setHint("#pwSavedHint", "Looks in this computer's saved passwords. You'll be asked to approve.");
   f.classList.remove("hidden");
   f.email.focus();
+}
+
+function setHint(sel, text, cls = "") { const h = $(sel); h.textContent = text; h.className = "hint " + cls; }
+
+async function pasteInto(name) {
+  const f = $("#imapForm"), el = f[name];
+  const text = (await readClipboard()).trim();
+  if (!text) return;
+  el.value = name === "password" ? text.replace(/\r?\n/g, "") : text.split(/\r?\n/)[0].trim();
+  if (name === "email" && !f.username.value) f.username.placeholder = el.value;
+  el.focus();
+}
+
+async function pasteAll() {
+  const text = await readClipboard();
+  if (!text.trim()) return toast("The clipboard is empty.");
+  const found = parseSettings(text), f = $("#imapForm"), filled = [];
+  for (const [k, v] of Object.entries(found)) if (f[k] && v) { f[k].value = v; filled.push(k.replace("_", " ")); }
+  if (found.imap_host || found.smtp_host || found.username) $("#advanced").open = true;
+  toast(filled.length ? `Filled in: ${filled.join(", ")}.` : "Couldn't recognise any account details in what you copied.", 5000);
+}
+
+async function useSavedPassword() {
+  const f = $("#imapForm");
+  if (!f.email.value) return setHint("#pwSavedHint", "Enter the email address first.", "bad");
+  setHint("#pwSavedHint", "Looking… approve the request from your computer if it asks.");
+  $("#pwSaved").disabled = true;
+  try {
+    const r = await api("/api/saved-password", { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(f).entries())) });
+    if (r.found) { f.password.value = r.password; setHint("#pwSavedHint", r.message, "ok"); }
+    else setHint("#pwSavedHint", r.message, "bad");
+  } catch (e) { setHint("#pwSavedHint", e.message, "bad"); }
+  finally { $("#pwSaved").disabled = false; }
+}
+
+// ---------- Microsoft sign-in in the normal browser (reuses existing Microsoft logins) ----------
+let msPoll = null;
+async function startMsLogin() {
+  if (state.info?.demo) return toast("Adding accounts is off in demo mode. Set DEMO_MODE=0 in .env.");
+  if (!state.info?.msConfigured) return toast("This copy of MailMaster has no Microsoft app ID. Use an official build from the Releases page.", 6000);
+  const before = new Set((state.info.accounts || []).map((a) => a.id));
+  try { await api("/api/ms-login/start", { method: "POST", body: "{}" }); }
+  catch (e) { return toast("Couldn't start Microsoft sign-in: " + e.message, 6000); }
+  $("#msWait").classList.remove("hidden");
+  clearInterval(msPoll);
+  const started = Date.now();
+  msPoll = setInterval(async () => {
+    if (Date.now() - started > 10 * 60 * 1000) return stopMsWait();
+    try {
+      const info = await api("/api/accounts");
+      const added = info.accounts.find((a) => !before.has(a.id));
+      if (added) { stopMsWait(); toast(`Connected ${added.email}`); await loadAccounts(); load(true); }
+    } catch (_) { /* keep waiting */ }
+  }, 2000);
+}
+function stopMsWait() { clearInterval(msPoll); msPoll = null; $("#msWait").classList.add("hidden"); }
+
+// ---------- settings ----------
+const limitLabel = (n) => (n === 0 ? "Max (all)" : n.toLocaleString());
+async function openSettings() {
+  const r = await api("/api/settings");
+  const fill = (sel, val) => {
+    const opts = [...new Set([...r.choices, val])].sort((a, b) => (a || 1e9) - (b || 1e9));
+    $(sel).innerHTML = opts.map((n) => `<option value="${n}" ${n === val ? "selected" : ""}>${limitLabel(n)}</option>`).join("");
+  };
+  fill("#setInbox", r.settings.max_inbox); fill("#setJunk", r.settings.max_junk); fill("#setDeleted", r.settings.max_deleted);
+  $("#setModal").classList.remove("hidden");
+}
+async function saveSettings() {
+  const body = { max_inbox: +$("#setInbox").value, max_junk: +$("#setJunk").value, max_deleted: +$("#setDeleted").value };
+  try { await api("/api/settings", { method: "POST", body: JSON.stringify(body) }); $("#setModal").classList.add("hidden"); load(true); }
+  catch (e) { toast(e.message); }
 }
 
 async function saveImap(ev) {
@@ -333,10 +469,16 @@ document.addEventListener("change", (e) => {
   if (t.dataset.id) { t.checked ? state.selected.add(t.dataset.id) : state.selected.delete(t.dataset.id); syncToolbar(); }
   else if (t.dataset.group) { currentItems().filter((m) => m.fromAddress === t.dataset.group).forEach((m) => t.checked ? state.selected.add(m.id) : state.selected.delete(m.id)); syncToolbar(); }
 });
-$("#addMs").addEventListener("click", (e) => {
-  if (state.info?.demo) { e.preventDefault(); toast("Adding accounts is off in demo mode. Set DEMO_MODE=0 in .env."); }
-  else if (!state.info?.msConfigured) { e.preventDefault(); toast("This copy of MailMaster has no Microsoft app ID. Use an official build from the Releases page.", 6000); }
-});
+$("#addMs").addEventListener("click", startMsLogin);
+$("#msCancel").addEventListener("click", stopMsWait);
+$("#pasteAll").addEventListener("click", pasteAll);
+$("#pwSaved").addEventListener("click", useSavedPassword);
+$("#pwShow").addEventListener("click", () => { const p = $("#imapForm").password; p.type = p.type === "password" ? "text" : "password"; $("#pwShow").textContent = p.type === "password" ? "Show" : "Hide"; });
+document.addEventListener("click", (e) => { const b = e.target.closest("[data-paste]"); if (b) { e.preventDefault(); pasteInto(b.dataset.paste); } });
+$("#openSettings").addEventListener("click", openSettings);
+$("#setClose").addEventListener("click", () => $("#setModal").classList.add("hidden"));
+$("#setCancel").addEventListener("click", () => $("#setModal").classList.add("hidden"));
+$("#setSave").addEventListener("click", saveSettings);
 $("#selectAll").addEventListener("change", (e) => { currentItems().forEach((m) => e.target.checked ? state.selected.add(m.id) : state.selected.delete(m.id)); render(); });
 $("#search").addEventListener("input", render);
 $("#groupBy").addEventListener("change", render);

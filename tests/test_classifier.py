@@ -9,7 +9,8 @@ def msg(**kw):
 
 
 def test_categories():
-    assert CATEGORIES == ["Priority", "Transactions", "Updates", "Promotions", "Mailing List", "Junk", "Deleted Mail"]
+    assert CATEGORIES == ["Priority", "Transactions", "Updates", "Promotions", "Mailing List", "Unclassified",
+                          "Junk", "Deleted Mail"]
 
 
 def test_folders_win():
@@ -24,3 +25,12 @@ def test_rules():
     assert classify(msg(subject="40% off everything", headers={"list-unsubscribe": "<https://x.com/u>"}))[0] == "Promotions"
     assert classify(msg(subject="This week in AI", headers={"list-id": "<news.x.com>"}))[0] == "Mailing List"
     assert classify(msg(subject="New sign-in to your account", fromAddress="no-reply@x.com"))[0] == "Updates"
+
+
+def test_unclassified():
+    # automated sender with no recognisable topic
+    assert classify(msg(subject="Your files this week", fromAddress="no-reply@dropbox.com"))[0] == "Unclassified"
+    # a person, but Outlook filed it under Other
+    assert classify(msg(subject="Quick intro", focused="other"))[0] == "Unclassified"
+    # a person, Outlook Focused -> still Priority
+    assert classify(msg(subject="Quick intro", focused="focused"))[0] == "Priority"

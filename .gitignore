@@ -2,6 +2,7 @@
 .env
 accounts.json
 token_cache.json
+settings.json
 mailmaster.log
 # python / build
 .venv/

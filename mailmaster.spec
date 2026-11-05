@@ -14,7 +14,7 @@ from version import APP_NAME, VERSION  # noqa: E402
 
 hidden = [
     "app", "auth", "graph", "ms_provider", "imap_provider", "accounts", "classifier",
-    "unsubscribe", "config", "demo_data", "build_info", "version",
+    "unsubscribe", "config", "demo_data", "build_info", "version", "settings", "saved_passwords",
 ] + collect_submodules("keyring.backends")
 
 a = Analysis(  # noqa: F821

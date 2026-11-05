@@ -1,8 +1,9 @@
-"""Sorts each email into one of six groups using simple, readable rules.
+"""Sorts each email into a category using simple, readable rules.
+Anything that matches no rule goes to "Unclassified".
 Edit the keyword lists below to tune it to your inbox."""
 import re
 
-CATEGORIES = ["Priority", "Transactions", "Updates", "Promotions", "Mailing List", "Junk", "Deleted Mail"]
+CATEGORIES = ["Priority", "Transactions", "Updates", "Promotions", "Mailing List", "Unclassified", "Junk", "Deleted Mail"]
 
 TRANSACTION_WORDS = [
     "receipt", "invoice", "your order", "order confirmation", "order #", "order no",
@@ -65,9 +66,14 @@ def classify(m):
 
     if automated:
         w = _has(text, UPDATE_WORDS)
-        return "Updates", "Automated sender" + (f', mentions "{w}"' if w else "")
+        if w:
+            return "Updates", f'Automated sender, mentions "{w}"'
+        return "Unclassified", "Automated sender, no clear topic"
 
-    if _has(subject, UPDATE_WORDS) and m.get("focused") == "other":
-        return "Updates", "Notification-style email"
+    if m.get("focused") == "other":  # Outlook put it in "Other"
+        w = _has(subject, UPDATE_WORDS)
+        if w:
+            return "Updates", f'Notification-style email, mentions "{w}"'
+        return "Unclassified", "From a person, but Outlook filed it under Other"
 
     return "Priority", "From a person" + (" (Outlook Focused)" if m.get("focused") == "focused" else "")

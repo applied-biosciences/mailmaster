@@ -31,16 +31,17 @@ def get_me(token):
 
 
 def list_messages(token, folder, limit):
-    """folder: 'inbox' or 'junkemail' (well-known folder names)."""
+    """folder: 'inbox', 'junkemail' or 'deleteditems'. limit=None loads every email in the folder."""
     url = f"{GRAPH}/me/mailFolders/{folder}/messages"
-    params = {"$select": SELECT, "$top": min(100, limit), "$orderby": "receivedDateTime desc"}
+    page = 200 if limit is None else min(200, limit)
+    params = {"$select": SELECT, "$top": page, "$orderby": "receivedDateTime desc"}
     out = []
-    while url and len(out) < limit:
+    while url and (limit is None or len(out) < limit):
         data = _request("GET", url, token, params=params)
         out.extend(data.get("value", []))
         url = data.get("@odata.nextLink")
         params = None  # nextLink already contains the query
-    return out[:limit]
+    return out if limit is None else out[:limit]
 
 
 def delete_messages(token, ids, permanent=False):
